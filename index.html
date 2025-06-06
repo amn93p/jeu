@@ -35,6 +35,7 @@
             <div class="mt-6 p-4 bg-gray-100 rounded-lg shadow-inner">
                 <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Vague actuelle:</span> <span id="waveNumber" class="font-bold text-blue-700">0</span> / <span id="maxWavesDisplay">100</span></p>
                 <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Score de la vague:</span> <span id="currentScore" class="font-bold text-purple-700">0</span></p>
+                <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Meilleur score de la vague:</span> <span id="bestWaveScore" class="font-bold text-green-700">0</span></p>
                 <p class="text-gray-700 text-lg mb-1"><span class="font-semibold">Statut:</span> <span id="statusMessage" class="font-bold text-yellow-600">Chargement...</span></p>
                 <p class="text-gray-700 text-sm"><span class="font-semibold">Epsilon (Exploration):</span> <span id="epsilonDisplay" class="font-bold text-teal-600">N/A</span></p>
             </div>
@@ -42,6 +43,12 @@
             <button id="toggleGhostDisplayButton"
                     class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-opacity-75 mt-2">
                 Afficher Fantômes
+            </button>
+
+            <input type="file" id="loadJsonInput" accept=".json" class="hidden">
+            <button id="loadJsonButton"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 mt-2">
+                Charger Poids JSON (Ind. 1)
             </button>
 
             <div class="mt-auto pt-4 border-t border-gray-200">
@@ -60,6 +67,14 @@
         <!-- Zone de jeu -->
         <div class="flex-1 flex items-center justify-center">
             <canvas id="gameCanvas" width="600" height="600"></canvas>
+        </div>
+
+        <!-- Section Top 3 Meilleurs Scores -->
+        <div id="topPlayersSection" class="mt-6 p-4 bg-gray-100 rounded-lg shadow-inner hidden w-full md:w-auto md:flex-shrink-0">
+            <h2 class="text-xl font-semibold text-gray-800 mb-3 text-center">Top 3 Meilleurs Scores</h2>
+            <ul id="topPlayersList" class="list-none space-y-1 text-gray-700">
+                <!-- Les scores seront ajoutés ici par JavaScript -->
+            </ul>
         </div>
     </div>
 
@@ -242,8 +257,121 @@
                 }
 
                 // Initialize lastSquarePosition only if square is defined (after initGame)
-                if (square) {
-                    lastSquarePosition = { x: square.x, y: square.y };
+                if (square) { // This variable 'square' is from the old single-instance version and likely not what's intended here.
+                    // lastSquarePosition should be an array for the population, initialized in initGame or elsewhere.
+                    // This specific if-block might be obsolete or need adjustment for population logic.
+                    // Considering its placement, it might have been for the initial displayed individual.
+                    // If squares[displayedIndividualIndex] exists, then:
+                    // lastSquarePositions[displayedIndividualIndex] = { x: squares[displayedIndividualIndex].x, y: squares[displayedIndividualIndex].y };
+                }
+
+                const loadJsonButton = document.getElementById('loadJsonButton');
+                const loadJsonInput = document.getElementById('loadJsonInput');
+
+                if (loadJsonButton && loadJsonInput) {
+                    loadJsonButton.addEventListener('click', () => {
+                        loadJsonInput.click(); // Déclenche le sélecteur de fichier
+                    });
+
+                    loadJsonInput.addEventListener('change', (event) => {
+                        const file = event.target.files[0];
+                        if (!file) {
+                            console.log("Aucun fichier sélectionné.");
+                            return;
+                        }
+
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                const jsonWeights = JSON.parse(e.target.result);
+
+                                if (typeof brain === 'undefined' || typeof brain.NeuralNetwork === 'undefined') {
+                                    console.error("Brain.js n'est pas chargé, impossible de traiter le JSON.");
+                                    statusMessageSpan.textContent = "Erreur: Brain.js non chargé.";
+                                    return;
+                                }
+
+                                if (!neuralNetworks || neuralNetworks.length === 0) {
+                                    console.error("La population de réseaux neuronaux n'est pas initialisée.");
+                                    statusMessageSpan.textContent = "Erreur: Population non initialisée.";
+                                    return;
+                                }
+
+                                const newNetwork = new brain.NeuralNetwork().fromJSON(jsonWeights);
+                                newNetwork.colorDisplay = individualColors[0 % individualColors.length]; // Assigner une couleur
+
+                                // Remplacer le premier individu
+                                neuralNetworks[0] = newNetwork;
+
+                                console.log("Poids JSON chargés et appliqués à l'individu 0 (affiché).");
+                                statusMessageSpan.textContent = "Poids JSON chargés pour Ind. 1.";
+
+                                // Réinitialiser l'état du jeu pour cet individu
+                                // S'assurer que les cercles de la génération actuelle sont utilisés si l'entraînement a commencé
+                                if (currentGenerationCircleData && currentGenerationCircleData.length > 0) {
+                                   // Ne rien faire ici, initGame(0) va utiliser currentGenerationCircleData
+                                } else {
+                                   // Si pas de cercles de génération, générer des cercles spécifiques pour cet individu
+                                   // ou s'assurer que initGame les gère. Par défaut, initGame devrait le faire.
+                                }
+
+                                initGame(0); // Réinitialise le carré, score, etc. pour l'individu 0
+                                             // populationCircles[0] sera (re)créé par initGame.
+
+                                // Mettre à jour l'affichage du score pour l'individu 0
+                                if (currentWaveScores && currentWaveScores.length > 0) {
+                                   currentScoreSpan.textContent = currentWaveScores[0].toFixed(0);
+                                } else {
+                                   currentScoreSpan.textContent = "0";
+                                }
+
+                                if (typeof draw === 'function') {
+                                    draw(); // Redessiner le canvas
+                                }
+
+                            } catch (error) {
+                                console.error("Erreur lors du chargement ou du parsing du fichier JSON:", error);
+                                statusMessageSpan.textContent = "Erreur chargement JSON.";
+                            } finally {
+                                // Réinitialiser la valeur de l'input pour permettre de recharger le même fichier
+                                event.target.value = null;
+                            }
+                        };
+                        reader.onerror = () => {
+                            console.error("Erreur de lecture du fichier.");
+                            statusMessageSpan.textContent = "Erreur lecture fichier.";
+                        };
+                        reader.readAsText(file);
+                    });
+                }
+
+                // Charger et afficher le Top 3 de l'historique au chargement de la page
+                const topPlayersSectionOnLoad = document.getElementById('topPlayersSection');
+                const topPlayersListOnLoad = document.getElementById('topPlayersList');
+
+                if (topPlayersSectionOnLoad && topPlayersListOnLoad) {
+                    try {
+                        const savedTopScores = localStorage.getItem('top3ScoresHistory');
+                        if (savedTopScores) {
+                            const topScores = JSON.parse(savedTopScores);
+                            if (Array.isArray(topScores) && topScores.length > 0) {
+                                topPlayersListOnLoad.innerHTML = ''; // Vider au cas où
+                                topScores.forEach((player, index) => {
+                                    const listItem = document.createElement('li');
+                                    listItem.className = 'p-2 bg-white rounded-md shadow-sm border border-gray-200';
+                                    listItem.textContent = `${index + 1}. Score: ${player.score.toFixed(0)}`;
+                                    topPlayersListOnLoad.appendChild(listItem);
+                                });
+                                topPlayersSectionOnLoad.classList.remove('hidden');
+                                console.log("Top 3 scores chargés depuis localStorage et affichés.");
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Erreur lors du chargement ou de l'affichage du Top 3 depuis localStorage:", e);
+                        if (topPlayersSectionOnLoad) {
+                            topPlayersSectionOnLoad.classList.add('hidden');
+                        }
+                    }
                 }
             };
             brainScript.onerror = () => {
@@ -780,6 +908,11 @@ function runGenerationEvaluationStep() {
         }
 
 function startTraining() {
+    const topPlayersSection = document.getElementById('topPlayersSection');
+    if (topPlayersSection) {
+        topPlayersSection.classList.add('hidden');
+    }
+
     if (isTraining) {
         console.log("[startTraining] L'entraînement est déjà en cours.");
         return;
@@ -1159,6 +1292,48 @@ function mutate(networkJSON, rate, amount) {
 }
 
 function endTrainingSession() {
+    const topPlayersSection = document.getElementById('topPlayersSection');
+    const topPlayersList = document.getElementById('topPlayersList');
+
+    if (topPlayersSection && topPlayersList) {
+        if (individualScores && individualScores.length > 0) {
+            const scoredIndividuals = individualScores.map((score, index) => ({
+                score: score,
+                originalIndex: index
+            })).sort((a, b) => b.score - a.score);
+
+            topPlayersList.innerHTML = ''; // Vider les anciens résultats
+
+            const numTopPlayers = Math.min(scoredIndividuals.length, 3);
+            if (numTopPlayers > 0) {
+                for (let i = 0; i < numTopPlayers; i++) {
+                    const player = scoredIndividuals[i];
+                    const listItem = document.createElement('li');
+                    listItem.className = 'p-2 bg-white rounded-md shadow-sm border border-gray-200';
+                    listItem.textContent = `${i + 1}. Score: ${player.score.toFixed(0)}`;
+                    topPlayersList.appendChild(listItem);
+                }
+                topPlayersSection.classList.remove('hidden');
+
+                // Sauvegarder le top 3 actuel dans localStorage
+                const topScoresToSave = scoredIndividuals.slice(0, numTopPlayers).map(player => ({ score: player.score }));
+                try {
+                    localStorage.setItem('top3ScoresHistory', JSON.stringify(topScoresToSave));
+                    console.log("Top 3 scores sauvegardés dans localStorage.");
+                } catch (e) {
+                    console.error("Erreur lors de la sauvegarde du Top 3 dans localStorage:", e);
+                }
+            } else {
+                topPlayersList.innerHTML = '<li class="text-gray-500">Aucun score enregistré.</li>';
+                topPlayersSection.classList.remove('hidden');
+                // Optionnel: localStorage.removeItem('top3ScoresHistory');
+            }
+        } else {
+            topPlayersList.innerHTML = '<li class="text-gray-500">Les données de score ne sont pas disponibles.</li>';
+            topPlayersSection.classList.remove('hidden');
+        }
+    }
+
     isTraining = false;
     if(statusMessageSpan) {
         statusMessageSpan.textContent = "Entraînement terminé ! (Max Générations)";
@@ -1202,6 +1377,7 @@ function endTrainingSession() {
 }
 
         function updateUI() {
+    const bestWaveScoreSpan = document.getElementById('bestWaveScore');
     // Ensure displayedIndividualIndex is valid before accessing arrays
     const displayIdx = (displayedIndividualIndex >= 0 && displayedIndividualIndex < POPULATION_SIZE) ? displayedIndividualIndex : 0;
 
@@ -1219,6 +1395,21 @@ function endTrainingSession() {
 
     if (isTraining && currentStepInGeneration > 0 && currentStepInGeneration <= STEPS_PER_GENERATION_EVALUATION) {
         statusMessageSpan.textContent = `Gén. ${currentGeneration}, Ind. ${displayIdx + 1}/${POPULATION_SIZE}, Étape ${currentStepInGeneration}/${STEPS_PER_GENERATION_EVALUATION}`;
+    }
+
+    if (bestWaveScoreSpan) {
+        if (currentWaveScores && currentWaveScores.length > 0) {
+            // Filtrer les valeurs non numériques ou nulles au cas où, bien que currentWaveScores devrait contenir des nombres.
+            const validScores = currentWaveScores.filter(score => typeof score === 'number' && !isNaN(score));
+            if (validScores.length > 0) {
+                const maxScore = Math.max(...validScores);
+                bestWaveScoreSpan.textContent = maxScore.toFixed(0);
+            } else {
+                bestWaveScoreSpan.textContent = "0"; // Ou "N/A" si aucun score valide
+            }
+        } else {
+            bestWaveScoreSpan.textContent = "0"; // Ou "N/A"
+        }
     }
 }
 
