@@ -34,10 +34,11 @@
 
             <div class="mt-6 p-4 bg-gray-100 rounded-lg shadow-inner">
                 <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Vague actuelle:</span> <span id="waveNumber" class="font-bold text-blue-700">0</span> / <span id="maxWavesDisplay">100</span></p>
-                <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Score de la vague:</span> <span id="currentScore" class="font-bold text-purple-700">0</span></p>
+                <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Score Individu Actuel:</span> <span id="currentScore" class="font-bold text-purple-700">0</span></p>
                 <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Meilleur score de la vague:</span> <span id="bestWaveScore" class="font-bold text-green-700">0</span></p>
                 <p class="text-gray-700 text-lg mb-1"><span class="font-semibold">Statut:</span> <span id="statusMessage" class="font-bold text-yellow-600">Chargement...</span></p>
                 <p class="text-gray-700 text-sm"><span class="font-semibold">Epsilon (Exploration):</span> <span id="epsilonDisplay" class="font-bold text-teal-600">N/A</span></p>
+                <p class="text-gray-700 text-lg mb-2"><span class="font-semibold">Record Absolu:</span> <span id="overallBestScoreEver" class="font-bold text-red-700">0</span></p>
             </div>
 
             <button id="toggleGhostDisplayButton"
@@ -75,6 +76,10 @@
             <ul id="topPlayersList" class="list-none space-y-1 text-gray-700">
                 <!-- Les scores seront ajoutés ici par JavaScript -->
             </ul>
+            <button id="downloadBestIndividualButton"
+                    class="hidden mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+                Télécharger Meilleur Individu (JSON)
+            </button>
         </div>
     </div>
 
@@ -88,6 +93,9 @@
         const WAVE_DURATION = 5000; // 5 secondes en millisecondes pour une vague (génération)
         const MAX_WAVES = 100;
         // const AI_DECISION_INTERVAL = 100; // L\'IA prend une décision toutes les 100 ms // Removed old
+
+        let overallBestScoreEver = 0;
+        let bestIndividualJSONData = null;
 
         // Récompenses et pénalités
         const REWARD_COLLECT_CIRCLE = 25;
@@ -372,6 +380,49 @@
                             topPlayersSectionOnLoad.classList.add('hidden');
                         }
                     }
+                }
+
+                const savedOverallBestScore = localStorage.getItem('overallBestScoreEver');
+                if (savedOverallBestScore) {
+                    overallBestScoreEver = parseInt(savedOverallBestScore, 10);
+                    if (isNaN(overallBestScoreEver)) {
+                        overallBestScoreEver = 0;
+                    }
+                }
+                const overallBestScoreSpan_init = document.getElementById('overallBestScoreEver');
+                if (overallBestScoreSpan_init) {
+                    overallBestScoreSpan_init.textContent = overallBestScoreEver.toFixed(0);
+                }
+                // updateUI() will be called by initGame -> draw, or by other UI update points,
+                // and it will handle displaying overallBestScoreEver correctly.
+
+                const downloadBestButton = document.getElementById('downloadBestIndividualButton');
+                if (downloadBestButton) {
+                    downloadBestButton.addEventListener('click', () => {
+                        if (bestIndividualJSONData) {
+                            try {
+                                const jsonString = JSON.stringify(bestIndividualJSONData, null, 2);
+                                const blob = new Blob([jsonString], { type: "application/json" });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = 'best_individual_neural_network.json';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                                console.log("Téléchargement manuel du meilleur individu initié.");
+                            } catch (e) {
+                                console.error("Erreur lors de la création du fichier pour téléchargement manuel:", e);
+                                if(statusMessageSpan) statusMessageSpan.textContent = "Erreur création fichier JSON.";
+                                alert("Erreur lors de la création du fichier de téléchargement. Vérifiez la console.");
+                            }
+                        } else {
+                            console.warn("Clic sur télécharger, mais pas de données JSON du meilleur individu disponibles.");
+                            if(statusMessageSpan) statusMessageSpan.textContent = "Info: Pas de données à télécharger.";
+                            alert("Aucune donnée du meilleur individu n'est actuellement prête pour le téléchargement.");
+                        }
+                    });
                 }
             };
             brainScript.onerror = () => {
@@ -912,6 +963,11 @@ function startTraining() {
     if (topPlayersSection) {
         topPlayersSection.classList.add('hidden');
     }
+    const downloadBestIndividualBtn = document.getElementById('downloadBestIndividualButton');
+    if (downloadBestIndividualBtn) {
+        downloadBestIndividualBtn.classList.add('hidden');
+    }
+    bestIndividualJSONData = null;
 
     if (isTraining) {
         console.log("[startTraining] L'entraînement est déjà en cours.");
@@ -1018,6 +1074,22 @@ async function processEndOfGenerationEvaluation() {
         individualScores[i] = currentWaveScores[i];
     }
     console.log(`[processEndOfGenEval] Scores finaux Gén. \${currentGeneration}: [\${individualScores.map(s => s.toFixed(2)).join(', ')}]`);
+
+    if (individualScores && individualScores.length > 0) {
+        const validScores = individualScores.filter(score => typeof score === 'number' && !isNaN(score));
+        if (validScores.length > 0) {
+            const maxScoreThisGeneration = Math.max(...validScores);
+            if (maxScoreThisGeneration > overallBestScoreEver) {
+                overallBestScoreEver = maxScoreThisGeneration;
+                try {
+                    localStorage.setItem('overallBestScoreEver', overallBestScoreEver.toFixed(0));
+                    console.log(`Nouveau record absolu sauvegardé : ${overallBestScoreEver.toFixed(0)}`);
+                } catch (e) {
+                    console.error("Erreur lors de la sauvegarde du Record Absolu dans localStorage:", e);
+                }
+            }
+        }
+    }
 
     // 2. Genetic Algorithm
     let scoredNetworks = neuralNetworks.map((net, index) => ({
@@ -1348,12 +1420,12 @@ function endTrainingSession() {
     // currentGeneration was incremented *before* this call if MAX_WAVES was reached.
     console.log(`[endTrainingSession] Entraînement complet terminé après \${currentGeneration - 1} générations.`);
 
+    /*
     // Sauvegarde du meilleur individu (l'élite à l'index 0 de la population actuelle)
     if (neuralNetworks && neuralNetworks.length > 0 && neuralNetworks[0]) {
         const bestNetwork = neuralNetworks[0]; // The champion of the last evaluated generation is at index 0
-        const bestScore = individualScores[0]; // Corresponds to the score of the network that ended up at index 0 after sorting
-
-        console.log(`[endTrainingSession] Meilleur individu (élite actuelle): Index 0, Score approx.: \${bestScore ? bestScore.toFixed(2) : 'N/A'}`);
+        // const bestScore = individualScores[0]; // Note: individualScores might not be sorted here
+        // console.log(`[endTrainingSession] Meilleur individu (élite actuelle): Index 0, Score approx.: ${bestScore ? bestScore.toFixed(2) : 'N/A'}`);
         try {
             const bestNetJSON = bestNetwork.toJSON();
             const jsonString = JSON.stringify(bestNetJSON, null, 2);
@@ -1373,20 +1445,54 @@ function endTrainingSession() {
     } else {
         console.warn("[endTrainingSession] Pas de meilleur individu trouvé pour la sauvegarde (population vide ou non initialisée).");
     }
+    */
+
+    // Nouvelle logique pour préparer le téléchargement manuel :
+    const downloadBtn = document.getElementById('downloadBestIndividualButton');
+    if (neuralNetworks && neuralNetworks.length > 0 && neuralNetworks[0]) {
+        const bestNetworkForDownload = neuralNetworks[0];
+        try {
+            bestIndividualJSONData = bestNetworkForDownload.toJSON();
+            console.log("Données JSON du meilleur individu prêtes pour téléchargement manuel.");
+            if (downloadBtn) {
+                downloadBtn.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.error("Erreur lors de la préparation JSON du meilleur individu:", e);
+            bestIndividualJSONData = null;
+            if (downloadBtn) downloadBtn.classList.add('hidden');
+        }
+    } else {
+        console.warn("[endTrainingSession] Pas de meilleur individu pour préparer le téléchargement.");
+        bestIndividualJSONData = null;
+        if (downloadBtn) downloadBtn.classList.add('hidden');
+    }
+
     updateUI();
 }
 
         function updateUI() {
     const bestWaveScoreSpan = document.getElementById('bestWaveScore');
-    // Ensure displayedIndividualIndex is valid before accessing arrays
-    const displayIdx = (displayedIndividualIndex >= 0 && displayedIndividualIndex < POPULATION_SIZE) ? displayedIndividualIndex : 0;
+    const overallBestScoreSpan = document.getElementById('overallBestScoreEver');
 
-    // currentScoreSpan now reflects the score of the displayed individual for the current wave
-    if (currentWaveScores && currentWaveScores.length > displayIdx) {
-        currentScoreSpan.textContent = currentWaveScores[displayIdx].toFixed(0);
-    } else {
-        currentScoreSpan.textContent = "0";
+    // Logique pour currentScoreSpan (Score Individu Actuel)
+    if (currentScoreSpan) {
+        let scoreToDisplay = 0;
+        let individualToShowScoreFor = displayedIndividualIndex;
+
+        if (showGhostIndividuals && Array.isArray(currentWaveScores) && currentWaveScores.length === POPULATION_SIZE) {
+            // En mode fantôme, currentFocusedIndividual est celui dont on veut potentiellement voir le score
+            individualToShowScoreFor = currentFocusedIndividual;
+        }
+
+        if (currentWaveScores && currentWaveScores.length > individualToShowScoreFor && typeof currentWaveScores[individualToShowScoreFor] === 'number') {
+            scoreToDisplay = currentWaveScores[individualToShowScoreFor];
+        }
+        currentScoreSpan.textContent = scoreToDisplay.toFixed(0);
     }
+
+    // Ensure displayedIndividualIndex is valid before accessing arrays for status message
+    const statusDisplayIdx = (displayedIndividualIndex >= 0 && displayedIndividualIndex < POPULATION_SIZE) ? displayedIndividualIndex : 0;
 
     waveNumberSpan.textContent = currentGeneration;
     epsilonDisplay.textContent = epsilon.toFixed(2);
@@ -1394,7 +1500,7 @@ function endTrainingSession() {
     // currentIndividualDisplaySpan logic removed as per request
 
     if (isTraining && currentStepInGeneration > 0 && currentStepInGeneration <= STEPS_PER_GENERATION_EVALUATION) {
-        statusMessageSpan.textContent = `Gén. ${currentGeneration}, Ind. ${displayIdx + 1}/${POPULATION_SIZE}, Étape ${currentStepInGeneration}/${STEPS_PER_GENERATION_EVALUATION}`;
+        statusMessageSpan.textContent = `Gén. ${currentGeneration}, Ind. ${statusDisplayIdx + 1}/${POPULATION_SIZE}, Étape ${currentStepInGeneration}/${STEPS_PER_GENERATION_EVALUATION}`;
     }
 
     if (bestWaveScoreSpan) {
@@ -1410,6 +1516,11 @@ function endTrainingSession() {
         } else {
             bestWaveScoreSpan.textContent = "0"; // Ou "N/A"
         }
+    }
+
+    // Mettre à jour l'affichage du Record Absolu
+    if (overallBestScoreSpan) {
+        overallBestScoreSpan.textContent = overallBestScoreEver.toFixed(0);
     }
 }
 
